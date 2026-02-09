@@ -1,3 +1,31 @@
+Metadata-Version: 2.4
+Name: grimmoire
+Version: 0.1.0
+Summary: 🌙 The Witch's Grimmoire - Traditional Medicine & Herbal Wisdom Database
+License: MIT
+Keywords: herbal,medicine,ethnobotany,repl,terminal,pubmed
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Healthcare Industry
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE.md
+Requires-Dist: rich>=13.0
+Requires-Dist: rapidfuzz>=3.0
+Requires-Dist: requests>=2.28
+Requires-Dist: aiohttp>=3.8
+Requires-Dist: beautifulsoup4>=4.12
+Requires-Dist: biopython>=1.81
+Requires-Dist: lxml>=4.9
+Requires-Dist: prompt-toolkit>=3.0
+Dynamic: license-file
+
 # 🌙 The Witch's Grimmoire 🌙
 
 ```
@@ -16,7 +44,7 @@
 
 > *✧･ﾟ: *✧･ﾟ:* A mystical terminal companion for exploring herbal wisdom *:･ﾟ✧*:･ﾟ✧*
 
-A witchy terminal-based REPL for searching traditional medicine databases, brewing knowledge from ancient herbalism and folk remedies. **Now with automatic web search fallback** — when your local grimmoire has no answers, we consult the vast online archives!
+A witchy terminal-based REPL for searching traditional medicine databases, brewing knowledge from ancient herbalism and folk remedies.
 
 ## ✨ Quick Summoning
 
@@ -34,8 +62,7 @@ python -m grimmoire.main
 
 ## 🔮 Mystical Features
 
-- **🌿 Multi-source Scrying**: Divine knowledge from local databases, PubMed scrolls, and 11+ online sources
-- **🌐 Automatic Web Fallback**: No local results? We search online archives automatically!
+- **🌿 Multi-source Scrying**: Divine knowledge from local databases and PubMed scrolls
 - **✨ Spell Correction**: Typos are transmuted automatically via fuzzy matching
 - **📖 Entity Divination**: Seek plants, ingredients, ailments, and recipes
 - **🕸️ Knowledge Gathering**: Scrape wisdom from NAEB, PubChem, and arcane sources
@@ -84,18 +111,11 @@ grimmoire
 ### Basic Incantations
 
 ```bash
-# Seek in the grimmoire (auto-searches web if no local results)
+# Seek in the grimmoire
 search plant chamomile          # Find herbs
 search ingredient curcumin      # Find compounds
 search ailment headache         # Find cures
 find lavender                   # Search all knowledge
-
-# Force include web results
-search plant turmeric --web     # Search local + online
-
-# Search online sources directly
-websearch curcumin              # Search all online databases
-websearch quercetin --provider chembl   # Search specific provider
 
 # Consult modern scrolls
 pubmed turmeric
@@ -105,7 +125,7 @@ pubmed "diabetes herbal treatment"
 sources list
 sources disable 5               # Silence a source
 
-# Gather new knowledge (for offline use)
+# Gather new knowledge
 scrape                          # List gathering rituals
 scrape "NAEB Datasette"         # Perform ritual
 scrape PubChem -b               # Background ritual
@@ -119,24 +139,6 @@ db stats
 db path
 ```
 
-## 🌐 Online Sources of Wisdom
-
-The grimmoire can consult these online archives:
-
-| Provider | Coverage | Specialty |
-|----------|----------|-----------|
-| **COCONUT** | 695K compounds | Natural products aggregator |
-| **LOTUS** | 750K pairs | Wikidata structure-organism links |
-| **ChEMBL** | 2.4M compounds | Bioactivity data |
-| **ClinicalTrials.gov** | Clinical trials | Modern research |
-| **NAEB** | 45K+ uses | Native American ethnobotany |
-| **HERB 2.0** | 7K herbs | TCM clinical evidence |
-| **TCMSP** | 29K ingredients | TCM Systems Pharmacology |
-| **OSADHI** | 22K compounds | Indian phytochemicals |
-| **IMPPAT** | 18K compounds | Indian medicinal plants |
-| **MSK** | 250+ herbs | Safety & interactions |
-| **Dr. Duke's** | Extensive | USDA phytochemistry |
-
 ## 📚 Scrolls of Knowledge
 
 - [User Guide](docs/USER_GUIDE.md) - Complete ritual instructions
@@ -149,18 +151,31 @@ The grimmoire can consult these online archives:
 grimmoire/
 ├── main.py              # Portal to the grimmoire
 ├── db/                  # SQLite with FTS5 (the memory)
-├── search/              # Scrying + spell correction + PubMed + web providers
-│   ├── engine.py        # Local + web fallback search
-│   ├── web_provider.py  # 11 online source providers
-│   └── pubmed.py        # PubMed E-utilities client
-├── scraper/             # Knowledge gatherers (offline)
+├── search/              # Scrying + spell correction + PubMed
+├── scraper/             # Knowledge gatherers
 ├── jobs/                # Background rituals with journaling
 └── repl/                # The mystical interface
 ```
 
+## 🌿 Sources of Ancient Wisdom
+
+| Source | Type | Knowledge |
+|--------|------|-----------|
+| NAEB Datasette | API | 45K+ Native American ethnobotany uses |
+| PubChem | API | Chemical compound properties |
+| PubMed | API | Modern medical scrolls |
+| COCONUT | API | 695K+ natural products |
+| And more... | | |
+
 ## 🕯️ A Session with the Grimmoire
 
 ```
+        ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+        ⠀⠀⠀⠀⠀⢀⣠⣴⣾⣿⣿⣿⣿⣿⣿⣿⣷⣦⣄⡀⠀⠀⠀⠀⠀
+        ⠀⠀⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⠀⠀⠀
+        ⠀⢀⣾⣿⣿⣿⣿⣿ 🌿 ⣿⣿⣿⣿⣿🌿⣿⣿⣿⣿⣿⣷⡀⠀
+      ☽ ⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇ ☾
+
 ╔══════════════════════════════════════════════════════════════════╗
 ║   ✧･ﾟ: *✧･ﾟ:*  THE WITCH'S GRIMMOIRE  *:･ﾟ✧*:･ﾟ✧                ║
 ║         ~ Herbal Wisdom & Traditional Medicine Database ~        ║
@@ -168,28 +183,25 @@ grimmoire/
 
 📖 Your grimmoire is empty. Gather wisdom with scrape "NAEB Datasette"
 
-🌙 Tip: Search online databases with websearch <query>
+🌙 Tip: Divine PubMed secrets with pubmed <query>
 
-🌕 grimmoire ⌁ search plant ashwagandha
-Searching online databases...
-┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
-┃ Type       ┃ Name               ┃ Source      ┃ Details          ┃
-┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
-│ plant      │ Ashwagandha        │ IMPPAT      │ Withania somn... │
-│ compound   │ Withanolide A      │ COCONUT     │ C28H38O6         │
-│ compound   │ Withaferin A       │ ChEMBL      │ CHEMBL65531      │
-└────────────┴────────────────────┴─────────────┴──────────────────┘
-Found 0 local + 12 online results
+🌕 grimmoire ⌁ scrape "NAEB Datasette"
+🌿 Gathering from NAEB Datasette...
+✓ Gathered 4521 entries of herbal wisdom
 
-🌖 grimmoire ⌁ websearch curcumin --provider chembl
-┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
-┃ Type       ┃ Name               ┃ Source      ┃ Details          ┃
-┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
-│ ingredient │ Curcumin           │ ChEMBL      │ C21H20O6         │
-│ ingredient │ Demethoxycurcumin  │ ChEMBL      │ C20H18O5         │
-└────────────┴────────────────────┴─────────────┴──────────────────┘
+🌖 grimmoire ⌁ search plant sage
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Type     ┃ Name               ┃ Details               ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 🌿 plant │ Sage               │ Salvia officinalis    │
+│ 🌿 plant │ White Sage         │ Salvia apiana         │
+└──────────┴────────────────────┴───────────────────────┘
 
-🌗 grimmoire ⌁ quit
+🌗 grimmoire ⌁ pubmed "sage antimicrobial"
+🔮 Consulting the modern scrolls...
+[1] Antimicrobial activity of Salvia officinalis essential oil...
+
+🌘 grimmoire ⌁ quit
 ✨ May the moon guide your path! 🌙
 ```
 

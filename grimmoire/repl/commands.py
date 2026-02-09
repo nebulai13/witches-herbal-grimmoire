@@ -12,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from ..db.manager import DatabaseManager
 from ..search.engine import SearchEngine, SearchType, SearchResult
 from ..search.pubmed import PubMedClient
+from ..search.web_provider import list_providers, get_provider
 from ..scraper.sources import SourceRegistry
 from ..scraper.base import ScraperProgress
 from ..jobs.runner import JobRunner, JobContext, JobStatus
@@ -40,9 +41,13 @@ class CommandHandler:
         self.journal = Journal(db)
     
     def cmd_search(self, args: List[str]) -> CommandResult:
-        """Search for entries. Usage: search <type> <query>"""
+        """Search for entries. Usage: search <type> <query> [--web]
+        
+        Use --web or -w to force include online database search.
+        Without flag, web search is used as fallback when no local results.
+        """
         if len(args) < 2:
-            return CommandResult(False, "Usage: search <type> <query>\nTypes: plant, ingredient, ailment, recipe, all")
+            return CommandResult(False, "Usage: search <type> <query> [--web]\nTypes: plant, ingredient, ailment, recipe, all")
         
         type_map = {
             'plant': SearchType.PLANT, 'plants': SearchType.PLANT,
@@ -52,19 +57,31 @@ class CommandHandler:
             'all': SearchType.ALL,
         }
         
+        # Parse --web flag
+        force_web = '--web' in args or '-w' in args
+        args = [a for a in args if a not in ('--web', '-w')]
+        
         search_type = type_map.get(args[0].lower(), SearchType.ALL)
         query = ' '.join(args[1:])
         
-        results, suggestion = self.search_engine.search(query, search_type)
+        with self.console.status(f"[bold green]Searching for '{query}'...") if force_web else self.console.status(""):
+            results, suggestion = self.search_engine.search(query, search_type, include_web=force_web if force_web else None)
         
         if suggestion:
             self.console.print(f"[yellow]Did you mean: {suggestion}?[/yellow]")
         
         if not results:
-            self.console.print("[dim]No results found in local database.[/dim]")
+            self.console.print("[dim]No results found.[/dim]")
             return CommandResult(True, "No results", [])
         
-        self._display_results(results)
+        # Check if any results came from web
+        has_web_results = any(r.source != 'local' for r in results)
+        self._display_results(results, show_source=has_web_results)
+        
+        local_count = sum(1 for r in results if r.source == 'local')
+        web_count = len(results) - local_count
+        if web_count > 0:
+            return CommandResult(True, f"Found {local_count} local + {web_count} online results", results)
         return CommandResult(True, f"Found {len(results)} results", results)
     
     def cmd_pubmed(self, args: List[str]) -> CommandResult:
@@ -92,6 +109,61 @@ class CommandHandler:
         if not args:
             return CommandResult(False, "Usage: find <query>")
         return self.cmd_search(['all'] + args)
+    
+    def cmd_websearch(self, args: List[str]) -> CommandResult:
+        """Search online databases. Usage: websearch <query> [--provider <name>]
+        
+        Searches multiple online traditional medicine databases:
+        - COCONUT: 695K natural products
+        - LOTUS: 750K structure-organism pairs (via Wikidata)
+        - ChEMBL: 2.4M compounds with bioactivity
+        - ClinicalTrials.gov: Clinical trials
+        - NAEB: Native American Ethnobotany
+        - HERB 2.0: TCM herbs and ingredients
+        - TCMSP: TCM Systems Pharmacology
+        - OSADHI: Indian medicinal phytochemicals
+        - IMPPAT: Indian Medicinal Plants
+        - MSK: Memorial Sloan Kettering herbs
+        - Dr. Duke's: Phytochemical database
+        """
+        if not args:
+            # List available providers
+            providers = list_providers()
+            self.console.print("[bold]Available web search providers:[/bold]")
+            for name in providers:
+                provider = get_provider(name)
+                self.console.print(f"  • [cyan]{name}[/cyan] - {provider.name}")
+            return CommandResult(True, "Listed providers", providers)
+        
+        # Parse arguments
+        provider_filter = None
+        query_parts = []
+        i = 0
+        while i < len(args):
+            if args[i] in ('--provider', '-p') and i + 1 < len(args):
+                provider_filter = [args[i + 1]]
+                i += 2
+            else:
+                query_parts.append(args[i])
+                i += 1
+        
+        if not query_parts:
+            return CommandResult(False, "Usage: websearch <query> [--provider <name>]")
+        
+        query = ' '.join(query_parts)
+        
+        with self.console.status(f"[bold green]Searching online databases for '{query}'..."):
+            try:
+                results = self.search_engine.search_web_only(query, SearchType.ALL, 20, provider_filter)
+            except Exception as e:
+                return CommandResult(False, f"Web search failed: {e}")
+        
+        if not results:
+            self.console.print("[dim]No results found in online databases.[/dim]")
+            return CommandResult(True, "No results", [])
+        
+        self._display_results(results, show_source=True)
+        return CommandResult(True, f"Found {len(results)} results from online sources", results)
     
     def cmd_sources(self, args: List[str]) -> CommandResult:
         """Manage data sources. Usage: sources [list|add|enable|disable] [args...]"""
@@ -259,24 +331,38 @@ class CommandHandler:
         else:
             return CommandResult(False, f"Unknown action: {action}")
     
-    def _display_results(self, results: List[SearchResult]):
+    def _display_results(self, results: List[SearchResult], show_source: bool = False):
         table = Table(title="Search Results", show_header=True)
         table.add_column("Type", style="cyan", width=12)
         table.add_column("Name", style="green")
+        if show_source:
+            table.add_column("Source", style="magenta", width=15)
         table.add_column("Details", style="dim")
         
         for result in results[:20]:
             name = result.data.get('name', 'Unknown')
             details = ""
             if result.type == 'plant':
-                details = result.data.get('scientific_name', '') or result.data.get('family', '')
+                details = result.data.get('scientific_name', '') or result.data.get('family', '') or result.data.get('latin_name', '')
             elif result.type == 'ingredient':
-                details = result.data.get('molecular_formula', '') or result.data.get('pubchem_cid', '')
+                details = result.data.get('molecular_formula', '') or result.data.get('pubchem_cid', '') or result.data.get('smiles', '')[:30] if result.data.get('smiles') else ''
             elif result.type == 'ailment':
-                details = result.data.get('category', '')
+                details = result.data.get('category', '') or result.data.get('status', '')
             elif result.type == 'recipe':
-                details = result.data.get('tradition', '')
-            table.add_row(result.type, name, details)
+                details = result.data.get('tradition', '') or result.data.get('tribe', '')
+            elif result.type == 'clinical_trial':
+                details = result.data.get('status', '') or result.data.get('nct_id', '')
+            elif result.type == 'ethnobotany':
+                details = result.data.get('tribe', '') or result.data.get('category', '')
+            
+            # Add URL as clickable link if present
+            if result.url:
+                name = f"[link={result.url}]{name}[/link]"
+            
+            if show_source:
+                table.add_row(result.type, name, result.source, details or "")
+            else:
+                table.add_row(result.type, name, details or "")
         
         self.console.print(table)
         if len(results) > 20:

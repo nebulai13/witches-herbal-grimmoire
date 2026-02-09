@@ -105,27 +105,115 @@ class SearchType(str, Enum):
 ### grimmoire.search.engine.SearchResult
 
 ```python
-@dataclass
 class SearchResult:
     type: str          # "plant", "ingredient", etc.
     data: dict         # Entity data
-    source: str        # "local" or source name
+    source: str        # "local" or provider name (e.g., "COCONUT")
     score: float       # Relevance score
+    url: str | None    # Link to source (for web results)
 ```
 
 ### grimmoire.search.engine.SearchEngine
 
 ```python
 class SearchEngine:
-    def __init__(self, db: DatabaseManager)
+    def __init__(self, db: DatabaseManager, web_fallback: bool = True, web_config: dict = None)
 ```
 
 | Method | Parameters | Returns | Description |
 |--------|------------|---------|-------------|
-| `search` | query, search_type=ALL, limit=20, correct_spelling=True | (list[SearchResult], str \| None) | Search with correction |
+| `search` | query, search_type=ALL, limit=20, correct_spelling=True, include_web=None | (list[SearchResult], str \| None) | Search with web fallback. `include_web`: True=force web, False=local only, None=auto fallback |
+| `search_web_only` | query, search_type=ALL, limit=20, providers=None | list[SearchResult] | Search only online sources |
 | `search_by_relationship` | entity_type, entity_id, target_type | list[SearchResult] | Find related entities |
 | `autocomplete` | partial: str, limit=10 | list[str] | Get suggestions |
 | `refresh_dictionary` | | None | Reload spellcheck dict |
+
+---
+
+## Web Provider Module
+
+### grimmoire.search.web_provider.SourceType
+
+```python
+class SourceType(str, Enum):
+    COMPOUND = "compound"
+    PLANT = "plant"
+    AILMENT = "ailment"
+    CLINICAL = "clinical"
+    ETHNOBOTANY = "ethnobotany"
+```
+
+### grimmoire.search.web_provider.WebSearchResult
+
+```python
+@dataclass
+class WebSearchResult:
+    source: str        # Provider name
+    result_type: str   # "compound", "plant", etc.
+    name: str          # Display name
+    data: dict         # Provider-specific data
+    url: str | None    # Link to source
+    score: float       # Relevance (default 1.0)
+```
+
+### grimmoire.search.web_provider.BaseWebProvider
+
+Abstract base class for web providers.
+
+```python
+class BaseWebProvider(ABC):
+    name: str                     # Display name
+    source_types: list[SourceType]  # Supported types
+    rate_limit: float             # Requests per second
+    
+    def __init__(self, config: dict = None)
+```
+
+| Method | Parameters | Returns | Description |
+|--------|------------|---------|-------------|
+| `search` | query: str, max_results: int = 20 | list[WebSearchResult] | **Abstract** - search provider |
+| `supports` | source_type: SourceType | bool | Check type support |
+
+### Built-in Web Providers
+
+| Class | Name | Types | Rate Limit |
+|-------|------|-------|------------|
+| `COCONUTProvider` | COCONUT | compound, plant | 2/sec |
+| `LOTUSProvider` | LOTUS | compound, plant | 1/sec |
+| `ChEMBLProvider` | ChEMBL | compound | 3/sec |
+| `ClinicalTrialsProvider` | ClinicalTrials.gov | clinical | 3/sec |
+| `DrDukeProvider` | Dr. Duke's | plant, compound, ethnobotany | 1/sec |
+| `HERB2Provider` | HERB 2.0 | plant, compound | 1/sec |
+| `TCMSPProvider` | TCMSP | plant, compound | 1/sec |
+| `OSADHIProvider` | OSADHI | compound, plant | 1/sec |
+| `IMPPATProvider` | IMPPAT | plant, compound | 1/sec |
+| `MSKHerbsProvider` | MSK About Herbs | plant, compound | 0.5/sec |
+| `NAEBWebProvider` | NAEB | plant, ethnobotany | 2/sec |
+
+### Provider Helper Functions
+
+```python
+def get_provider(name: str, config: dict = None) -> BaseWebProvider | None
+def list_providers() -> list[str]
+def get_providers_for_type(source_type: SourceType, config: dict = None) -> list[BaseWebProvider]
+```
+
+### grimmoire.search.web_provider.WebSearchAggregator
+
+```python
+class WebSearchAggregator:
+    def __init__(self, config: dict = None)
+    # config["providers"] = list of provider names to enable
+```
+
+| Method | Parameters | Returns | Description |
+|--------|------------|---------|-------------|
+| `search` | query, source_types=None, max_results=20, max_per_provider=10 | list[WebSearchResult] | Search all enabled providers |
+| `search_compounds` | query, max_results=20 | list[WebSearchResult] | Search compounds only |
+| `search_plants` | query, max_results=20 | list[WebSearchResult] | Search plants only |
+| `search_clinical` | query, max_results=20 | list[WebSearchResult] | Search clinical data only |
+
+---
 
 ### grimmoire.search.spellcheck.SpellChecker
 
@@ -298,9 +386,10 @@ class CommandHandler:
 ```
 
 Command methods:
-- `cmd_search(args)` - Search database
-- `cmd_find(args)` - Quick search
+- `cmd_search(args)` - Search database (with web fallback). Supports `--web` flag.
+- `cmd_find(args)` - Quick search across all types
 - `cmd_pubmed(args)` - PubMed search
+- `cmd_websearch(args)` - Search online databases directly. Supports `--provider <name>` flag.
 - `cmd_sources(args)` - Source management
 - `cmd_scrape(args, timeout=30)` - Run scraper
 - `cmd_jobs(args)` - Job management

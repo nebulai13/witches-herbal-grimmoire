@@ -4,11 +4,12 @@
 
 1. [Getting Started](#getting-started)
 2. [Searching](#searching)
-3. [Data Sources](#data-sources)
-4. [Scraping Data](#scraping-data)
-5. [Background Jobs](#background-jobs)
-6. [Database Management](#database-management)
-7. [Tips & Tricks](#tips--tricks)
+3. [Web Search](#web-search)
+4. [Data Sources](#data-sources)
+5. [Scraping Data](#scraping-data)
+6. [Background Jobs](#background-jobs)
+7. [Database Management](#database-management)
+8. [Tips & Tricks](#tips--tricks)
 
 ---
 
@@ -49,17 +50,22 @@ Database is empty. Run 'scrape NAEB Datasette' to get started.
 
 ### First Steps
 
-1. **Populate the database** with data from NAEB (Native American Ethnobotany):
+1. **Search online** (works immediately, no setup needed):
+   ```
+   websearch curcumin
+   ```
+
+2. **Or populate the database** with data from NAEB (Native American Ethnobotany):
    ```
    scrape "NAEB Datasette"
    ```
 
-2. **Search for plants**:
+3. **Search for plants** (searches local, falls back to web if empty):
    ```
    search plant sage
    ```
 
-3. **Search PubMed** for research:
+4. **Search PubMed** for research:
    ```
    pubmed "sage antimicrobial"
    ```
@@ -83,6 +89,22 @@ Database is empty. Run 'scrape NAEB Datasette' to get started.
 Use `find` for a quick search across all types:
 ```
 find chamomile
+```
+
+### Web Fallback
+
+When local search returns no results, Grimmoire **automatically searches online databases**:
+```
+🌿 grimmoire> search plant ashwagandha
+Searching online databases...
+Found 0 local + 8 online results
+```
+
+### Force Web Search
+
+Add `--web` to always include online results:
+```
+search plant turmeric --web
 ```
 
 ### PubMed Search
@@ -121,6 +143,83 @@ find ginger
 
 # Research articles on elderberry
 pubmed elderberry immune
+
+# Force include online results
+search ingredient quercetin --web
+```
+
+---
+
+## Web Search
+
+### Direct Web Search
+
+Use `websearch` to search online databases directly (bypasses local DB):
+
+```bash
+# Search all online providers
+websearch curcumin
+
+# Search a specific provider
+websearch quercetin --provider chembl
+websearch ashwagandha --provider imppat
+```
+
+### List Available Providers
+
+```
+websearch
+```
+
+Output:
+```
+Available web search providers:
+  • coconut - COCONUT
+  • lotus - LOTUS
+  • chembl - ChEMBL
+  • clinicaltrials - ClinicalTrials.gov
+  • naeb - NAEB
+  • herb2 - HERB 2.0
+  • tcmsp - TCMSP
+  • osadhi - OSADHI
+  • imppat - IMPPAT
+  • msk - MSK About Herbs
+  • dukes - Dr. Duke's
+```
+
+### Online Providers Reference
+
+| Provider | Coverage | Best For |
+|----------|----------|----------|
+| **coconut** | 695K compounds | Natural products, structures |
+| **lotus** | 750K structure-organism pairs | Wikidata-linked compound data |
+| **chembl** | 2.4M compounds | Bioactivity, drug-likeness |
+| **clinicaltrials** | Ongoing trials | Clinical evidence |
+| **naeb** | 45K+ uses | Native American ethnobotany |
+| **herb2** | 7K herbs, 49K ingredients | TCM with clinical trials |
+| **tcmsp** | 499 herbs, 29K ingredients | TCM pharmacology |
+| **osadhi** | 22K phytochemicals | Indian medicinal plants |
+| **imppat** | 4K plants, 18K compounds | Ayurvedic medicine |
+| **msk** | 250+ herbs | Safety, interactions, oncology |
+| **dukes** | Extensive | USDA phytochemistry |
+
+### Web Search Examples
+
+```bash
+# Find natural products containing a compound
+websearch berberine
+
+# Find TCM herbs for a condition
+websearch "liver" --provider herb2
+
+# Find clinical trials for a plant
+websearch "turmeric" --provider clinicaltrials
+
+# Find Ayurvedic information
+websearch "ashwagandha" --provider imppat
+
+# Check herb safety/interactions
+websearch "St. John's Wort" --provider msk
 ```
 
 ---
@@ -386,10 +485,19 @@ cp ~/.grimmoire/grimmoire.db ~/.grimmoire/grimmoire.db.backup
 
 ### "No results found"
 
-1. Check if database is populated: `db stats`
-2. If empty, run a scrape: `scrape "NAEB Datasette"`
-3. Try broader search terms
-4. Check for spelling suggestions
+1. **Web search is automatic** — if local DB is empty, we search online automatically
+2. Try `websearch <query>` to search online databases directly
+3. Check if database is populated: `db stats`
+4. If you want local data, run a scrape: `scrape "NAEB Datasette"`
+5. Try broader search terms
+6. Check for spelling suggestions
+
+### Web Search Not Working
+
+1. Check your internet connection
+2. Some providers may be temporarily unavailable
+3. Try a different provider: `websearch <query> --provider coconut`
+4. Rate limits may apply — wait a moment and retry
 
 ### Scrape Interrupted
 
@@ -399,9 +507,30 @@ Use `jobs list` to find paused jobs, then `jobs resume <id>`.
 
 The first search after startup builds the spell-check dictionary. Subsequent searches are faster.
 
+### Web vs Local Search
+
+| Scenario | Behavior |
+|----------|----------|
+| Local DB has results | Returns local results only |
+| Local DB empty | Automatically searches online |
+| `--web` flag used | Returns local + online results |
+| `websearch` command | Searches only online sources |
+
 ### PubMed Rate Limiting
 
 PubMed allows 3 requests/second without an API key. For heavy use, get a free NCBI API key and set:
 ```python
 pubmed = PubMedClient(api_key="your_key")
 ```
+
+### Online Provider Rate Limits
+
+| Provider | Rate Limit |
+|----------|------------|
+| PubChem | 5 req/sec |
+| PubMed | 3-10 req/sec |
+| ChEMBL | 3 req/sec |
+| COCONUT | 2 req/sec |
+| Others | 1 req/sec |
+
+The grimmoire automatically respects these limits.

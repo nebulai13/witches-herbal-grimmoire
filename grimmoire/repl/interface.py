@@ -66,6 +66,9 @@ WITCHY_TIPS = [
     "🕯️ Tip: Discover ailment cures with [green]search ailment <condition>[/green]",
     "☽ Tip: Your spell history is preserved across sessions",
     "✨ Tip: Misspelled incantations are auto-corrected",
+    "🌐 Tip: Search online databases with [green]websearch <query>[/green]",
+    "🔍 Tip: No local results? We'll search the web automatically!",
+    "📚 Tip: Force web search with [green]search plant <name> --web[/green]",
 ]
 
 FAREWELL_MESSAGES = [
@@ -84,8 +87,26 @@ HELP_TEXT = """
 - `search ingredient <query>` - Divine active compounds
 - `search ailment <query>` - Find cures for maladies
 - `search recipe <query>` - Discover ancient preparations
+- `search <type> <query> --web` - Force include online sources
 - `find <query>` - Search all mystical knowledge
 - `pubmed <query>` - Consult the modern scrolls
+
+### 🌐 Online Scrying (Web Search)
+- `websearch <query>` - Search all online databases
+- `websearch <query> --provider <name>` - Search specific database
+
+**Available Providers:**
+  - `coconut` - COCONUT 2.0 (695K natural products)
+  - `lotus` - LOTUS/Wikidata (750K structure-organism pairs)
+  - `chembl` - ChEMBL (2.4M compounds + bioactivity)
+  - `clinicaltrials` - ClinicalTrials.gov (clinical trials)
+  - `naeb` - Native American Ethnobotany Database
+  - `herb2` - HERB 2.0 (TCM herbs & ingredients)
+  - `tcmsp` - TCM Systems Pharmacology
+  - `osadhi` - OSADHI (Indian phytochemicals)
+  - `imppat` - IMPPAT 2.0 (Indian Medicinal Plants)
+  - `msk` - Memorial Sloan Kettering herbs
+  - `dukes` - Dr. Duke's Phytochemical DB
 
 ### 📚 Sources of Wisdom
 - `sources list` - View all knowledge sources
@@ -93,7 +114,7 @@ HELP_TEXT = """
 - `sources enable <id>` - Awaken a dormant source
 - `sources disable <id>` - Silence a source
 
-### 🔮 Scrying & Gathering
+### 🔮 Scrying & Gathering (Offline Scraping)
 - `scrape` - List available gathering rituals
 - `scrape <source>` - Gather knowledge (30s timeout)
 - `scrape <source> -b` - Gather in the background
@@ -114,6 +135,7 @@ HELP_TEXT = """
 
 ## 💫 Mystical Tips
 - Spell corrections are automatic - fear not typos!
+- No local results? We automatically search online databases!
 - Long rituals can be interrupted with Ctrl+C and resumed later
 - The grimmoire remembers your search history
 """
@@ -124,11 +146,12 @@ class GrimmoireCompleter(Completer):
     
     def __init__(self, handler: CommandHandler):
         self.handler = handler
-        self.commands = ['search', 'find', 'pubmed', 'sources', 'scrape', 'jobs', 'db', 'help', 'quit', 'exit']
+        self.commands = ['search', 'find', 'pubmed', 'websearch', 'sources', 'scrape', 'jobs', 'db', 'help', 'quit', 'exit']
         self.search_types = ['plant', 'ingredient', 'ailment', 'recipe', 'all']
         self.sources_actions = ['list', 'add', 'enable', 'disable']
         self.jobs_actions = ['list', 'status', 'resume', 'stop']
         self.db_actions = ['stats', 'path']
+        self.web_providers = ['coconut', 'lotus', 'chembl', 'clinicaltrials', 'naeb', 'herb2', 'tcmsp', 'osadhi', 'imppat', 'msk', 'dukes']
     
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -150,9 +173,26 @@ class GrimmoireCompleter(Completer):
                         yield Completion(stype, start_position=-len(prefix))
             else:
                 partial = words[-1] if not text.endswith(' ') else ''
-                suggestions = self.handler.search_engine.autocomplete(partial)
-                for suggestion in suggestions:
-                    yield Completion(suggestion, start_position=-len(partial))
+                # Suggest --web flag
+                if partial.startswith('-'):
+                    if '--web'.startswith(partial):
+                        yield Completion('--web', start_position=-len(partial))
+                else:
+                    suggestions = self.handler.search_engine.autocomplete(partial)
+                    for suggestion in suggestions:
+                        yield Completion(suggestion, start_position=-len(partial))
+        elif words[0].lower() == 'websearch':
+            # Check for --provider flag
+            if '--provider' in words or '-p' in words:
+                try:
+                    idx = words.index('--provider') if '--provider' in words else words.index('-p')
+                    if idx == len(words) - 1 or (idx == len(words) - 2 and not text.endswith(' ')):
+                        prefix = words[-1].lower() if idx < len(words) - 1 else ''
+                        for provider in self.web_providers:
+                            if provider.startswith(prefix):
+                                yield Completion(provider, start_position=-len(prefix))
+                except ValueError:
+                    pass
         elif words[0].lower() == 'sources':
             if len(words) == 1 or (len(words) == 2 and not text.endswith(' ')):
                 prefix = words[1].lower() if len(words) > 1 else ''
@@ -276,6 +316,9 @@ class GrimmoireREPL:
         
         elif command == 'pubmed':
             return self.handler.cmd_pubmed(args)
+        
+        elif command == 'websearch':
+            return self.handler.cmd_websearch(args)
         
         elif command == 'sources':
             return self.handler.cmd_sources(args)

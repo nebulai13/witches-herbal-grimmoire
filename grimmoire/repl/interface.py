@@ -2,6 +2,7 @@
 import sys
 import shlex
 import random
+import time
 from typing import Optional, List
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from rich.markdown import Markdown
 from rich.text import Text
 from rich.style import Style
 from rich.theme import Theme
+from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -18,7 +20,7 @@ from prompt_toolkit.completion import Completer, Completion
 
 from ..db.manager import DatabaseManager
 from ..db.schema import get_db_path
-from .commands import CommandHandler, CommandResult
+from .commands import CommandHandler, CommandResult, magic_print, magic_print_block
 
 
 # Witchy color theme
@@ -47,7 +49,7 @@ BANNER = """
         ⠀⠹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏⠀
         ⠀⠀⠈⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠁⠀⠀
         ⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀
-        ⠀⠀⠀[bright_white]☽[/bright_white]⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀[bright_white]☾[/bright_white]⠀⠀⠀
+      [bright_white]☽[/bright_white] ⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠇⠀⠀ [bright_white]☾[/bright_white]
 [/magenta]
 [bold green]╔══════════════════════════════════════════════════════════════════╗[/bold green]
 [bold green]║[/bold green]                                                                  [bold green]║[/bold green]
@@ -66,7 +68,7 @@ WITCHY_TIPS = [
     "🕯️ Tip: Discover ailment cures with [green]search ailment <condition>[/green]",
     "☽ Tip: Your spell history is preserved across sessions",
     "✨ Tip: Misspelled incantations are auto-corrected",
-    "🌐 Tip: Search online databases with [green]websearch <query>[/green]",
+    "🌐 Tip: Search online databases with [green]searchtheuniverse <query>[/green]",
     "🔍 Tip: No local results? We'll search the web automatically!",
     "📚 Tip: Force web search with [green]search plant <name> --web[/green]",
 ]
@@ -92,8 +94,10 @@ HELP_TEXT = """
 - `pubmed <query>` - Consult the modern scrolls
 
 ### 🌐 Online Scrying (Web Search)
-- `websearch <query>` - Search all online databases
-- `websearch <query> --provider <name>` - Search specific database
+- `searchtheuniverse <query>` - Search all online databases
+- `searchtheuniverse <query> --provider <name>` - Search specific database
+- `read <#>` - View details of a search result in grimmoire
+- `open <#>` - Open result in web browser
 
 **Available Providers:**
   - `coconut` - COCONUT 2.0 (695K natural products)
@@ -146,7 +150,7 @@ class GrimmoireCompleter(Completer):
     
     def __init__(self, handler: CommandHandler):
         self.handler = handler
-        self.commands = ['search', 'find', 'pubmed', 'websearch', 'sources', 'scrape', 'jobs', 'db', 'help', 'quit', 'exit']
+        self.commands = ['search', 'find', 'pubmed', 'searchtheuniverse', 'read', 'open', 'sources', 'scrape', 'jobs', 'db', 'help', 'quit', 'exit']
         self.search_types = ['plant', 'ingredient', 'ailment', 'recipe', 'all']
         self.sources_actions = ['list', 'add', 'enable', 'disable']
         self.jobs_actions = ['list', 'status', 'resume', 'stop']
@@ -181,7 +185,7 @@ class GrimmoireCompleter(Completer):
                     suggestions = self.handler.search_engine.autocomplete(partial)
                     for suggestion in suggestions:
                         yield Completion(suggestion, start_position=-len(partial))
-        elif words[0].lower() == 'websearch':
+        elif words[0].lower() == 'searchtheuniverse':
             # Check for --provider flag
             if '--provider' in words or '-p' in words:
                 try:
@@ -235,12 +239,12 @@ class GrimmoireREPL:
             completer=GrimmoireCompleter(self.handler)
         )
     
-    def _get_prompt(self) -> str:
+    def _get_prompt(self) -> HTML:
         """Get a witchy prompt with moon phase indicator."""
         moons = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘']
         import time
         moon = moons[int(time.time() / 3600) % 8]  # Changes hourly
-        return f"\n{moon} [bold magenta]grimmoire[/bold magenta] [green]⌁[/green] "
+        return HTML(f'\n{moon} <b><magenta>grimmoire</magenta></b> <green>⌁</green> ')
     
     def run(self):
         """Run the REPL main loop."""
@@ -251,19 +255,18 @@ class GrimmoireREPL:
         total = sum(stats.get(k, 0) for k in ['plants', 'ingredients', 'ailments', 'recipes'])
         
         if total > 0:
-            self.console.print(f"[dim]📖 Your grimmoire contains {total} entries of arcane knowledge[/dim]")
+            magic_print(f"📖 Your grimmoire contains {total} entries of arcane knowledge")
         else:
-            self.console.print("[dim]📖 Your grimmoire is empty. Gather wisdom with [green]scrape \"NAEB Datasette\"[/green][/dim]")
+            magic_print("📖 Your grimmoire is empty. Gather wisdom with scrape \"NAEB Datasette\"")
         
         # Random witchy tip
-        self.console.print(f"\n[dim]{random.choice(WITCHY_TIPS)}[/dim]\n")
+        magic_print(f"\n{random.choice(WITCHY_TIPS)}\n")
         
         while True:
             try:
-                # Get witchy prompt
+                # Get witchy prompt - use prompt_toolkit directly to avoid overwrite
                 prompt_text = self._get_prompt()
-                self.console.print(prompt_text, end="")
-                line = self.session.prompt("")
+                line = self.session.prompt(prompt_text)
                 line = line.strip()
                 
                 if not line:
@@ -272,7 +275,7 @@ class GrimmoireREPL:
                 try:
                     parts = shlex.split(line)
                 except ValueError as e:
-                    self.console.print(f"[danger]✗ Spell malformed: {e}[/danger]")
+                    magic_print(f"✗ Spell malformed: {e}")
                     continue
                 
                 command = parts[0].lower()
@@ -284,18 +287,18 @@ class GrimmoireREPL:
                     break
                 
                 if not result.success and result.message:
-                    self.console.print(f"[danger]✗ {result.message}[/danger]")
+                    magic_print(f"✗ {result.message}")
             
             except KeyboardInterrupt:
                 self.handler.job_runner.request_stop()
-                self.console.print("\n[warning]⚡ Ritual interrupted. Use 'quit' to close the grimmoire.[/warning]")
+                magic_print("\n⚡ Ritual interrupted. Use 'quit' to close the grimmoire.")
                 continue
             
             except EOFError:
                 break
         
         farewell = random.choice(FAREWELL_MESSAGES)
-        self.console.print(f"\n[bold magenta]✨ {farewell}[/bold magenta]\n")
+        magic_print(f"\n✨ {farewell}\n")
         self.db.close()
     
     def _handle_command(self, command: str, args: List[str]) -> Optional[CommandResult]:
@@ -317,8 +320,14 @@ class GrimmoireREPL:
         elif command == 'pubmed':
             return self.handler.cmd_pubmed(args)
         
-        elif command == 'websearch':
+        elif command == 'searchtheuniverse':
             return self.handler.cmd_websearch(args)
+        
+        elif command == 'read':
+            return self.handler.cmd_read(args)
+        
+        elif command == 'open':
+            return self.handler.cmd_open(args)
         
         elif command == 'sources':
             return self.handler.cmd_sources(args)

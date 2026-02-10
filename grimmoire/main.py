@@ -8,7 +8,12 @@ of medicinal plants, remedies, and traditional healing arts.
 """
 import argparse
 import sys
+import warnings
 from pathlib import Path
+
+# Suppress urllib3 SSL warnings
+warnings.filterwarnings('ignore', message='.*OpenSSL.*')
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 from grimmoire.repl.interface import GrimmoireREPL
 from grimmoire.db.schema import get_db_path

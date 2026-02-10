@@ -1,6 +1,8 @@
 """Command handlers for the Grimmoire REPL."""
 import json
 import time
+import webbrowser
+import sys
 from typing import Optional, Callable, List, Dict
 from dataclasses import dataclass
 
@@ -21,6 +23,36 @@ from ..jobs.journal import Journal
 # Import crawlers to register them
 from ..scraper.crawlers import naeb
 
+# Strip Rich markup for plain text output
+import re
+def strip_rich_markup(text: str) -> str:
+    """Remove Rich markup tags from text."""
+    return re.sub(r'\[/?[^\]]+\]', '', text)
+
+
+def magic_print(text: str, delay: float = 0.018):
+    """Print text letter by letter with magical effect."""
+    clean_text = strip_rich_markup(text)
+    for char in clean_text:
+        sys.stdout.write(char)
+        sys.stdout.flush()
+        time.sleep(delay)
+    sys.stdout.write('\n')
+    sys.stdout.flush()
+
+
+def magic_print_block(text: str, line_delay: float = 0.012, char_delay: float = 0.008):
+    """Print a block of text with magical effect, line by line."""
+    clean_text = strip_rich_markup(text)
+    for line in clean_text.split('\n'):
+        for char in line:
+            sys.stdout.write(char)
+            sys.stdout.flush()
+            time.sleep(char_delay)
+        sys.stdout.write('\n')
+        sys.stdout.flush()
+        time.sleep(line_delay)
+
 
 @dataclass
 class CommandResult:
@@ -39,6 +71,7 @@ class CommandHandler:
         self.pubmed = PubMedClient()
         self.job_runner = JobRunner(db)
         self.journal = Journal(db)
+        self._last_results: List[SearchResult] = []  # Store last search results
     
     def cmd_search(self, args: List[str]) -> CommandResult:
         """Search for entries. Usage: search <type> <query> [--web]
@@ -68,10 +101,10 @@ class CommandHandler:
             results, suggestion = self.search_engine.search(query, search_type, include_web=force_web if force_web else None)
         
         if suggestion:
-            self.console.print(f"[yellow]Did you mean: {suggestion}?[/yellow]")
+            magic_print(f"🔮 Did you mean: {suggestion}?")
         
         if not results:
-            self.console.print("[dim]No results found.[/dim]")
+            magic_print("No results found in the grimmoire...")
             return CommandResult(True, "No results", [])
         
         # Check if any results came from web
@@ -98,7 +131,7 @@ class CommandHandler:
                 return CommandResult(False, f"PubMed search failed: {e}")
         
         if not results:
-            self.console.print("[dim]No PubMed results found.[/dim]")
+            magic_print("No PubMed scrolls found...")
             return CommandResult(True, "No results", [])
         
         self._display_pubmed_results(results)
@@ -129,10 +162,10 @@ class CommandHandler:
         if not args:
             # List available providers
             providers = list_providers()
-            self.console.print("[bold]Available web search providers:[/bold]")
+            magic_print("✨ Available web search providers:")
             for name in providers:
                 provider = get_provider(name)
-                self.console.print(f"  • [cyan]{name}[/cyan] - {provider.name}")
+                magic_print(f"  • {name} - {provider.name}")
             return CommandResult(True, "Listed providers", providers)
         
         # Parse arguments
@@ -148,22 +181,136 @@ class CommandHandler:
                 i += 1
         
         if not query_parts:
-            return CommandResult(False, "Usage: websearch <query> [--provider <name>]")
+            return CommandResult(False, "Usage: searchtheuniverse <query> [--provider <name>]")
         
         query = ' '.join(query_parts)
         
-        with self.console.status(f"[bold green]Searching online databases for '{query}'..."):
-            try:
-                results = self.search_engine.search_web_only(query, SearchType.ALL, 20, provider_filter)
-            except Exception as e:
-                return CommandResult(False, f"Web search failed: {e}")
+        magic_print(f"🔮 Scrying the universe for '{query}'...")
+        try:
+            results = self.search_engine.search_web_only(query, SearchType.ALL, 20, provider_filter)
+        except Exception as e:
+            return CommandResult(False, f"Web search failed: {e}")
         
         if not results:
-            self.console.print("[dim]No results found in online databases.[/dim]")
+            magic_print("The universe reveals nothing...")
             return CommandResult(True, "No results", [])
         
         self._display_results(results, show_source=True)
         return CommandResult(True, f"Found {len(results)} results from online sources", results)
+    
+    def cmd_read(self, args: List[str]) -> CommandResult:
+        """Read/view a search result in the grimmoire with pager. Usage: read <#>
+        
+        Shows detailed information about a result from the last search.
+        Uses a pager for comfortable reading (like less/man).
+        """
+        if not args:
+            return CommandResult(False, "Usage: read <#>\nDisplays details of a result from the last search")
+        
+        if not self._last_results:
+            return CommandResult(False, "No recent search results. Run a search first.")
+        
+        try:
+            idx = int(args[0]) - 1  # Convert to 0-based index
+        except (ValueError, IndexError):
+            return CommandResult(False, "Please provide a valid result number")
+        
+        if idx < 0 or idx >= len(self._last_results):
+            return CommandResult(False, f"Result #{idx + 1} not found. Results are numbered 1-{len(self._last_results)}")
+        
+        result = self._last_results[idx]
+        name = result.data.get('name', 'Unknown')
+        
+        # Build plain text content for pager
+        lines = []
+        lines.append("=" * 70)
+        lines.append(f"  ✨ {name}")
+        lines.append("=" * 70)
+        lines.append("")
+        lines.append(f"Type: {result.type}")
+        lines.append(f"Source: {result.source}")
+        lines.append("")
+        
+        # Show ALL data from the result
+        for key, value in result.data.items():
+            if key == 'name':
+                continue  # Already shown
+            
+            # Format the key nicely
+            display_key = key.replace('_', ' ').title()
+            
+            if isinstance(value, list):
+                if value:
+                    lines.append(f"{display_key}:")
+                    for item in value:
+                        lines.append(f"  • {item}")
+            elif isinstance(value, dict):
+                lines.append(f"{display_key}:")
+                for k, v in value.items():
+                    lines.append(f"  {k}: {v}")
+            elif value:
+                # Wrap long text
+                str_value = str(value)
+                if len(str_value) > 70:
+                    lines.append(f"{display_key}:")
+                    # Word wrap
+                    words = str_value.split()
+                    current_line = "  "
+                    for word in words:
+                        if len(current_line) + len(word) + 1 > 70:
+                            lines.append(current_line)
+                            current_line = "  " + word
+                        else:
+                            current_line += " " + word if current_line != "  " else word
+                    if current_line.strip():
+                        lines.append(current_line)
+                else:
+                    lines.append(f"{display_key}: {str_value}")
+        
+        lines.append("")
+        if result.url:
+            lines.append(f"URL: {result.url}")
+            lines.append("")
+            lines.append("💡 Use 'open " + str(idx + 1) + "' to open in browser")
+        
+        lines.append("")
+        lines.append("─" * 70)
+        
+        content = "\n".join(lines)
+        
+        # Display with magical typing effect
+        magic_print_block(content)
+        
+        return CommandResult(True, f"Displayed result #{idx + 1}", result)
+    
+    def cmd_open(self, args: List[str]) -> CommandResult:
+        """Open a search result in browser. Usage: open <#>
+        
+        Opens the URL in your default web browser.
+        """
+        if not args:
+            return CommandResult(False, "Usage: open <#>\nOpens a result from the last search in your browser")
+        
+        if not self._last_results:
+            return CommandResult(False, "No recent search results. Run a search first.")
+        
+        try:
+            idx = int(args[0]) - 1  # Convert to 0-based index
+        except (ValueError, IndexError):
+            return CommandResult(False, "Please provide a valid result number")
+        
+        if idx < 0 or idx >= len(self._last_results):
+            return CommandResult(False, f"Result #{idx + 1} not found. Results are numbered 1-{len(self._last_results)}")
+        
+        result = self._last_results[idx]
+        
+        if not result.url:
+            return CommandResult(False, f"No URL available for result #{idx + 1}. Use 'read {idx + 1}' to view details.")
+        
+        webbrowser.open(result.url)
+        magic_print(f"✓ Portal opened: {result.data.get('name', 'Unknown')}")
+        
+        return CommandResult(True, f"Opened result #{idx + 1} in browser", result)
     
     def cmd_sources(self, args: List[str]) -> CommandResult:
         """Manage data sources. Usage: sources [list|add|enable|disable] [args...]"""
@@ -204,9 +351,9 @@ class CommandHandler:
         """Scrape data from a source. Usage: scrape <source_name> [--background]"""
         if not args:
             available = SourceRegistry.list_sources()
-            self.console.print("[bold]Available scrapers:[/bold]")
+            magic_print("📜 Available gathering rituals:")
             for name in available:
-                self.console.print(f"  • {name}")
+                magic_print(f"  • {name}")
             return CommandResult(True, "Listed scrapers")
         
         source_name = args[0]
@@ -310,7 +457,7 @@ class CommandHandler:
                     scraper.request_stop()
             return scraper.run(resume_from=resume_from, callback=callback)
         
-        self.console.print(f"[green]Resuming job {job_id}...[/green]")
+        magic_print(f"🔄 Resuming ritual {job_id}...")
         self.job_runner.resume_job(job_id, resume_scrape, async_mode=True)
         return CommandResult(True, f"Resumed job {job_id}")
     
@@ -326,20 +473,27 @@ class CommandHandler:
             self._display_stats(stats)
             return CommandResult(True, "Database stats", stats)
         elif action == 'path':
-            self.console.print(f"[bold]Database path:[/bold] {self.db.db_path}")
+            magic_print(f"📖 Grimmoire location: {self.db.db_path}")
             return CommandResult(True, str(self.db.db_path))
         else:
             return CommandResult(False, f"Unknown action: {action}")
     
     def _display_results(self, results: List[SearchResult], show_source: bool = False):
+        # Store results for later reference (e.g., opening URLs)
+        self._last_results = results
+        
+        # Magic reveal of title
+        magic_print("✨ Revealing ancient wisdom...", delay=0.02)
+        
         table = Table(title="Search Results", show_header=True)
+        table.add_column("#", style="bold yellow", width=3)
         table.add_column("Type", style="cyan", width=12)
         table.add_column("Name", style="green")
         if show_source:
             table.add_column("Source", style="magenta", width=15)
         table.add_column("Details", style="dim")
         
-        for result in results[:20]:
+        for idx, result in enumerate(results[:20], 1):
             name = result.data.get('name', 'Unknown')
             details = ""
             if result.type == 'plant':
@@ -360,13 +514,17 @@ class CommandHandler:
                 name = f"[link={result.url}]{name}[/link]"
             
             if show_source:
-                table.add_row(result.type, name, result.source, details or "")
+                table.add_row(str(idx), result.type, name, result.source, details or "")
             else:
-                table.add_row(result.type, name, details or "")
+                table.add_row(str(idx), result.type, name, details or "")
         
         self.console.print(table)
         if len(results) > 20:
-            self.console.print(f"[dim]... and {len(results) - 20} more results[/dim]")
+            magic_print(f"... and {len(results) - 20} more results")
+        
+        # Show hint about opening results
+        if any(r.url for r in results[:20]):
+            magic_print("💡 Use 'read <#>' to view details, 'open <#>' to open in browser")
     
     def _display_pubmed_results(self, results: List[Dict]):
         for i, article in enumerate(results, 1):

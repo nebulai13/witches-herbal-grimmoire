@@ -27,3 +27,4 @@ grimmoire/search/__init__.py
 grimmoire/search/engine.py
 grimmoire/search/pubmed.py
 grimmoire/search/spellcheck.py
+grimmoire/search/web_provider.py
